@@ -8,7 +8,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'horacio-cesi-filewritter'; // Replace with your desired bucket name
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'jeremy-cesi-filewritter'; // Replace with your desired bucket name
 
 // S3 Configuration
 const endpoint = process.env.S3_ENDPOINT;
