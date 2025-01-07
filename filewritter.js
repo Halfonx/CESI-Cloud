@@ -3,6 +3,7 @@ const AWS = require('aws-sdk');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'horacio-cesi-filewritter'; // Replace with your desired bucket name
 
 // Middleware to parse JSON bodies
 app.use(express.json());
