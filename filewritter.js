@@ -1,95 +1,54 @@
 const express = require('express');
-const AWS = require('aws-sdk');
+const { S3Client, HeadBucketCommand, CreateBucketCommand, 
+       PutObjectCommand, GetObjectCommand, DeleteObjectCommand, 
+       ListObjectsCommand } = require('@aws-sdk/client-s3');
+const bodyParser = require('body-parser');
+const streamToString = require('stream-to-string');
 const path = require('path');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'horacio-cesi-filewritter'; // Replace with your desired bucket name
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// S3 Configuration
+const endpoint = process.env.S3_ENDPOINT;
+const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
 
-// S3 configuration using environment variables
-const s3 = new AWS.S3({
-    endpoint: process.env.S3_ENDPOINT,
-    accessKeyId: process.env.S3_ACCESS_KEY_ID,
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-    s3ForcePathStyle: true
+if (!endpoint || !accessKeyId || !secretAccessKey) {
+    console.error('Error: Missing S3 configuration in environment variables.');
+    process.exit(1);
+}
+
+const s3 = new S3Client({
+    endpoint,
+    region: 'us-east-1', // Adjust region if needed
+    credentials: {
+        accessKeyId,
+        secretAccessKey,
+    },
 });
 
-const bucketName = process.env.S3_BUCKET_NAME;
+// Middleware to parse JSON request bodies
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Function to ensure the bucket exists
+// Ensure bucket exists
 const ensureBucketExists = async () => {
     try {
-        const buckets = await s3.listBuckets().promise();
-        if (!buckets.Buckets.some(bucket => bucket.Name === bucketName)) {
-            await s3.createBucket({ Bucket: bucketName }).promise();
-            console.log(`Bucket '${bucketName}' created.`);
+        await s3.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
+        console.log(`Bucket "${BUCKET_NAME}" already exists.`);
+    } catch (err) {
+        if (err.$metadata && err.$metadata.httpStatusCode === 404) {
+            await s3.send(new CreateBucketCommand({ Bucket: BUCKET_NAME }));
+            console.log(`Bucket "${BUCKET_NAME}" created.`);
         } else {
-            console.log(`Bucket '${bucketName}' already exists.`);
+            console.error('Error ensuring bucket exists:', err);
         }
-    } catch (error) {
-        console.error('Error ensuring bucket exists:', error);
-        throw error;
     }
 };
 
-// Serve the HTML file
-app.get('/', async (req, res) => {
-    try {
-        const data = await s3.listObjectsV2({ Bucket: bucketName }).promise();
-        const files = data.Contents.map(file => file.Key);
-
-        const html = `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>S3 File Manager</title>
-            </head>
-            <body>
-                <h1>S3 File Manager</h1>
-                <form id="uploadForm" action="/files" method="POST">
-                    <textarea name="text" id="text" cols="30" rows="10" placeholder="Enter file content"></textarea><br>
-                    <button type="submit">Upload File</button>
-                </form>
-                <h2>Files in Bucket:</h2>
-                <ul>
-                    ${files.map(file => `<li>${file}</li>`).join('')}
-                </ul>
-                <script>
-                    const form = document.getElementById('uploadForm');
-                    form.addEventListener('submit', async (event) => {
-                        event.preventDefault();
-                        const text = document.getElementById('text').value;
-
-                        const response = await fetch('/files', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ text })
-                        });
-
-                        if (response.ok) {
-                            alert('File uploaded successfully!');
-                            location.reload();
-                        } else {
-                            alert('Failed to upload file.');
-                        }
-                    });
-                </script>
-            </body>
-            </html>
-        `;
-
-        res.send(html);
-    } catch (error) {
-        console.error('Error generating HTML page:', error);
-        res.status(500).send('Error generating HTML page.');
-    }
-});
-
-// POST request: Create a new file
+// POST: Create a new object with the given text
 app.post('/files', async (req, res) => {
     const { text } = req.body;
 
@@ -100,40 +59,21 @@ app.post('/files', async (req, res) => {
     const filename = `${Date.now()}.txt`;
 
     try {
-        await s3.putObject({
-            Bucket: bucketName,
+        await s3.send(new PutObjectCommand({
+            Bucket: BUCKET_NAME,
             Key: filename,
-            Body: text
-        }).promise();
+            Body: text,
+            ContentType: 'text/plain',
+        }));
 
         res.status(201).json({ filename });
-    } catch (error) {
-        console.error('Error saving the file:', error);
-        res.status(500).json({ error: 'Error saving the file.' });
+    } catch (err) {
+        console.error('Error uploading file:', err);
+        res.status(500).json({ error: 'Failed to upload the file.' });
     }
 });
 
-// GET request: Retrieve a file's content
-app.get('/files/:filename', async (req, res) => {
-    const { filename } = req.params;
-
-    try {
-        const data = await s3.getObject({
-            Bucket: bucketName,
-            Key: filename
-        }).promise();
-
-        res.status(200).json({ content: data.Body.toString('utf-8') });
-    } catch (error) {
-        if (error.code === 'NoSuchKey') {
-            return res.status(404).json({ error: 'File not found.' });
-        }
-        console.error('Error reading the file:', error);
-        res.status(500).json({ error: 'Error reading the file.' });
-    }
-});
-
-// PUT request: Update a file's content
+// PUT: Update an object with new text
 app.put('/files/:filename', async (req, res) => {
     const { filename } = req.params;
     const { text } = req.body;
@@ -143,59 +83,82 @@ app.put('/files/:filename', async (req, res) => {
     }
 
     try {
-        await s3.putObject({
-            Bucket: bucketName,
+        await s3.send(new PutObjectCommand({
+            Bucket: BUCKET_NAME,
             Key: filename,
-            Body: text
-        }).promise();
+            Body: text,
+            ContentType: 'text/plain',
+        }));
 
         res.status(200).json({ message: 'File updated successfully.' });
-    } catch (error) {
-        console.error('Error updating the file:', error);
-        res.status(500).json({ error: 'Error updating the file.' });
+    } catch (err) {
+        console.error('Error updating file:', err);
+        res.status(500).json({ error: 'Failed to update the file.' });
     }
 });
 
-// DELETE request: Delete a file
+// GET: Retrieve the content of an object
+app.get('/files/:filename', async (req, res) => {
+    const { filename } = req.params;
+
+    try {
+        const data = await s3.send(new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: filename,
+        }));
+
+        const content = await streamToString(data.Body);
+        res.status(200).json({ content });
+    } catch (err) {
+        if (err.$metadata && err.$metadata.httpStatusCode === 404) {
+            res.status(404).json({ error: 'File not found.' });
+        } else {
+            console.error('Error retrieving file:', err);
+            res.status(500).json({ error: 'Failed to retrieve the file.' });
+        }
+    }
+});
+
+// GET: List all objects in the bucket
+app.get('/files', async (req, res) => {
+    try {
+        const data = await s3.send(new ListObjectsCommand({ Bucket: BUCKET_NAME }));
+        const files = data.Contents ? data.Contents.map(item => item.Key) : [];
+        res.status(200).json({ files });
+    } catch (err) {
+        console.error('Error listing files:', err);
+        res.status(500).json({ error: 'Failed to list files.' });
+    }
+});
+
+// DELETE: Delete an object
 app.delete('/files/:filename', async (req, res) => {
     const { filename } = req.params;
 
     try {
-        await s3.deleteObject({
-            Bucket: bucketName,
-            Key: filename
-        }).promise();
+        await s3.send(new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: filename,
+        }));
 
         res.status(200).json({ message: 'File deleted successfully.' });
-    } catch (error) {
-        if (error.code === 'NoSuchKey') {
-            return res.status(404).json({ error: 'File not found.' });
+    } catch (err) {
+        if (err.$metadata && err.$metadata.httpStatusCode === 404) {
+            res.status(404).json({ error: 'File not found.' });
+        } else {
+            console.error('Error deleting file:', err);
+            res.status(500).json({ error: 'Failed to delete the file.' });
         }
-        console.error('Error deleting the file:', error);
-        res.status(500).json({ error: 'Error deleting the file.' });
     }
 });
 
-// GET request: List all files in the bucket
-app.get('/files', async (req, res) => {
-    try {
-        const data = await s3.listObjectsV2({ Bucket: bucketName }).promise();
-        const files = data.Contents.map(file => file.Key);
-        res.status(200).json({ files });
-    } catch (error) {
-        console.error('Error listing files:', error);
-        res.status(500).json({ error: 'Error listing files.' });
-    }
+// Serve HTML file for frontend
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start the server
-(async () => {
-    try {
-        await ensureBucketExists();
-        app.listen(PORT, () => {
-            console.log(`Server is running on http://localhost:${PORT}`);
-        });
-    } catch (error) {
-        console.error('Failed to start the server:', error);
-    }
-})();
+// Start the server and ensure bucket exists
+app.listen(PORT, async () => {
+    await ensureBucketExists();
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
