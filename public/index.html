@@ -1,51 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>File Manager</title>
-    </head>
-    <body>
-        <h1>File Manager</h1>
-        <textarea id="text" rows="4" cols="50" placeholder="Enter text here..."></textarea>
-        <br>
-        <button id="upload">Upload</button>
-        <h2>Files:</h2>
-        <ul id="file-list"></ul>
-        <script>
-         const uploadButton = document.getElementById('upload');
-         const textArea = document.getElementById('text');
-         const fileList = document.getElementById('file-list');
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager</title>
+    <!-- Bootstrap CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h1 class="text-center mb-4">File Manager</h1>
 
-         const fetchFiles = async () => {
-             const response = await fetch('/files');
-             const data = await response.json();
-             fileList.innerHTML = '';
-             data.files.forEach(file => {
-                 const li = document.createElement('li');
-                 const a = document.createElement('a');
-                 a.href = `/files/${file}`;
-                 a.textContent = file;
-                 li.appendChild(a);
-                 fileList.appendChild(li);
-             });
-         };
+    <div class="mb-4">
+        <h2>Upload File</h2>
+        <textarea id="text" class="form-control mb-2" rows="4" placeholder="Enter text here..."></textarea>
+        <input type="text" id="tags" class="form-control mb-2" placeholder="Enter tags separated by commas">
+        <button id="upload" class="btn btn-primary w-100">Upload</button>
+    </div>
 
-         uploadButton.addEventListener('click', async () => {
-             const text = textArea.value;
-             if (text) {
-                 await fetch('/files', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({ text })
-                 });
-                 textArea.value = '';
-                 await fetchFiles();
-             }
-         });
+    <div class="mb-4">
+        <h2>Search Files by Tags</h2>
+        <form id="search-form" class="d-flex mb-2">
+            <input type="text" id="search-tags" class="form-control me-2" placeholder="Enter tags separated by commas">
+            <button type="submit" class="btn btn-secondary">Search</button>
+        </form>
+        <ul id="search-results" class="list-group"></ul>
+    </div>
 
-         setInterval(fetchFiles, 30000);
-         fetchFiles();
-        </script>
-    </body>
+    <div>
+        <h2>Files</h2>
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Tags</th>
+                </tr>
+            </thead>
+            <tbody id="file-list"></tbody>
+        </table>
+    </div>
+
+    <!-- Bootstrap JS Bundle CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const uploadButton = document.getElementById('upload');
+        const textArea = document.getElementById('text');
+        const tagsInput = document.getElementById('tags');
+        const fileList = document.getElementById('file-list');
+        const searchForm = document.getElementById('search-form');
+        const searchTagsInput = document.getElementById('search-tags');
+        const searchResults = document.getElementById('search-results');
+
+        const fetchFiles = async () => {
+            const response = await fetch('/files');
+            const data = await response.json();
+            fileList.innerHTML = '';
+            data.files.forEach(file => {
+                const row = document.createElement('tr');
+                const filenameCell = document.createElement('td');
+                const tagsCell = document.createElement('td');
+
+                const link = document.createElement('a');
+                link.href = `/files/${file.filename}`;
+                link.textContent = file.filename;
+
+                filenameCell.appendChild(link);
+                tagsCell.textContent = file.tags.join(', ');
+
+                row.appendChild(filenameCell);
+                row.appendChild(tagsCell);
+                fileList.appendChild(row);
+            });
+        };
+
+        uploadButton.addEventListener('click', async () => {
+            const text = textArea.value;
+            const tags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+            if (text) {
+                await fetch('/files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, tags })
+                });
+                textArea.value = '';
+                tagsInput.value = '';
+                await fetchFiles();
+            }
+        });
+
+        searchForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const tags = searchTagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+            if (tags.length) {
+                const response = await fetch(`/search?tags=${tags.join(',')}`);
+                const data = await response.json();
+                searchResults.innerHTML = '';
+                data.filenames.forEach(filename => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item';
+                    const a = document.createElement('a');
+                    a.href = `/files/${filename}`;
+                    a.textContent = filename;
+                    li.appendChild(a);
+                    searchResults.appendChild(li);
+                });
+            }
+        });
+
+        setInterval(fetchFiles, 30000);
+        fetchFiles();
+    </script>
+</body>
 </html>
