@@ -1,20 +1,24 @@
-# Use an official Node.js image as the base
-FROM node:18-alpine
-
-# Set the working directory inside the container
+# FROM node:23-alpine
+FROM node:23-slim
 WORKDIR /app
-
-# Copy package.json and package-lock.json to the working directory
-COPY package*.json ./
-
-# Install project dependencies
+COPY package.json /app
 RUN npm install
+COPY ./*.js /app
+COPY ./public /app/public
+ENV PORT=8080
 
-# Copy the rest of the application code into the container
-COPY . .
+ARG S3_ENDPOINT
+ARG S3_ACCESS_KEY_ID
+ARG S3_SECRET_ACCESS_KEY
 
-# Expose the port your app will run on
-EXPOSE 3000
+ARG MYSQL_ADDON_URI
 
-# Start the application
-CMD ["npm", "start"]
+ENV S3_ENDPOINT=$S3_ENDPOINT
+ENV S3_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID
+ENV S3_SECRET_ACCESS_KEY=$S3_SECRET_ACCESS_KEY
+
+ENV MYSQL_ADDON_URI=$MYSQL_ADDON_URI
+
+USER node
+EXPOSE 8080
+CMD node index.js
