@@ -71,10 +71,10 @@ jobs:
       run: |
         kubectl set image deployment/filewriter filewriter=halfonx/filewriter:latest
 
-    -name: Send Discord deploy notification
-    env:
-      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-    run: |
-      curl -X POST -H "Content-Type: application/json" -d '{
+    - name: Send Discord deploy notification
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        curl -X POST -H "Content-Type: application/json" -d '{
           "content": "Nouvelle image Docker poussée : `halfonx/filewriter:latest`"
-      }' $DISCORD_WEBHOOK
+        }' $DISCORD_WEBHOOK
