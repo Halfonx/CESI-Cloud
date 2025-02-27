@@ -46,7 +46,7 @@ jobs:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       run: |
         curl -X POST -H "Content-Type: application/json" -d '{
-          "content": "Nouvelle image Docker construite : `halfonx/filewriter:latest`"
+          "content": "Nouvelle image Docker construite : `halfonx/filewriter:${{ github.sha }}`"
         }' $DISCORD_WEBHOOK
 
   deploy:
