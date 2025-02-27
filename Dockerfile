@@ -21,4 +21,4 @@ ENV MYSQL_ADDON_URI=$MYSQL_ADDON_URI
 
 USER node
 EXPOSE 8080
-CMD node index.js
+CMD node filewritter.js
