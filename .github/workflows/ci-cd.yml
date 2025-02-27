@@ -43,6 +43,14 @@ jobs:
         context: .
         push: true
         tags: halfonx/filewriter:latest
+    
+    - name: Send Discord notifications
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        curl -X POST -H "Content-Type: application/json" -d '{
+          "content": "Nouvelle image Docker construite et poussée : `halfonx/filewriter:latest`"
+        }' $DISCORD_WEBHOOK
 
   deploy:
     runs-on: ubuntu-latest
