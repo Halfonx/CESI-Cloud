@@ -11,10 +11,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: write-all
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Node.js
       uses: actions/setup-node@v2
@@ -25,28 +26,25 @@ jobs:
       run: npm install
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v3
 
-    - name: Login to DockerHub
-      uses: docker/login-action@v1
-      with:
-        registry: docker.io
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+    - name: Login to GitHub Container Registry (GHCR)
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u halfonx --password-stdin
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        push: true
-        tags: halfonx/filewriter:latest
+    - name: Build and tag Docker image
+      run: |
+          docker build --build-arg MYSQL_ADDON_URI=${{ secrets.MYSQL_ADDON_URI }} --build-arg S3_ENDPOINT=${{ secrets.S3_ENDPOINT }}  --build-arg S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }} -build-arg S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}  -t ghcr.io/halfonx/filewriter:${{ github.sha }} .
+
+    - name: Push Docker image to GHCR
+        run: |
+          docker push ghcr.io/halfonx/filewriter:${{ github.sha }}
     
     - name: Send Discord build notification
       env:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       run: |
         curl -X POST -H "Content-Type: application/json" -d '{
-          "content": "Nouvelle image Docker construite : `halfonx/filewriter:${{ github.sha }}`"
+          "content": "Nouvelle image Docker construite et poussée : `halfonx/filewriter:${{ github.sha }}`"
         }' $DISCORD_WEBHOOK
 
   deploy:
