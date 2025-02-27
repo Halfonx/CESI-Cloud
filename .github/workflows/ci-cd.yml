@@ -46,33 +46,3 @@ jobs:
         curl -X POST -H "Content-Type: application/json" -d '{
           "content": "Nouvelle image Docker construite et poussée : `halfonx/filewriter:${{ github.sha }}`"
         }' $DISCORD_WEBHOOK
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v1
-      with:
-        version: 'v1.18.2'
-
-    - name: Configure kubectl
-      run: |
-        mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
-
-    - name: Update Kubernetes deployment
-      run: |
-        kubectl set image deployment/filewriter filewriter=halfonx/filewriter:latest
-
-    - name: Send Discord deploy notification
-      env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      run: |
-        curl -X POST -H "Content-Type: application/json" -d '{
-          "content": "Nouvelle image Docker poussée : `halfonx/filewriter:${{ github.sha }}`"
-        }' $DISCORD_WEBHOOK
